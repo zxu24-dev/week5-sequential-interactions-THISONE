@@ -28,11 +28,7 @@
   #stage { position: absolute; width: 1440px; height: 1080px; transform-origin: 0 0; }
   .abs { position: absolute; display: block; }
 
-  #hint {
-    position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 20;
-    background: #fff; border: 3px solid #d0567f; color: #a8335e; border-radius: 999px;
-    padding: 7px 24px; font-weight: 800; font-size: 22px; box-shadow: 0 4px 0 #f3a9c3; white-space: nowrap;
-  }
+  #hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   /* Machine group: everything that shakes together */
   #machine { left: 390px; top: 107px; width: 656px; height: 973px; transform-origin: 50% 100%; touch-action: none; }
@@ -492,7 +488,7 @@ function step(dt) {
     }
     case 'settle':
       damp = 5; s.t += dt;
-      if ((Math.abs(s.th) < .02 && Math.abs(s.om) < .08) || s.t > 1.6) release();
+      if ((s.t > .25 && Math.abs(s.om) < .15) || s.t > .6) release();
       break;
     case 'drop': {
       const f = s.fall;
