@@ -39,7 +39,7 @@
   #machine.shakeable { cursor: grab; }
   #machine.shakeable:active { cursor: grabbing; }
   #body { left: 0; top: 0; width: 656px; height: 973px; }
-  #bow { left: 141px; top: -49px; width: 380px; z-index: 6; pointer-events: none; }
+  #bow { left: 141px; top: -39px; width: 380px; z-index: 6; pointer-events: none; }
 
   /* Glass window: claw, rope and toys are clipped to it */
   #win { left: 33px; top: 73px; width: 590px; height: 556px; border-radius: 56px; overflow: hidden; z-index: 1; }
@@ -55,12 +55,12 @@
   .ctrl { border: 0; padding: 0; background: none; z-index: 2; touch-action: none; transition: opacity .3s, filter .3s; }
   .ctrl img { display: block; width: 100%; }
   .ctrl.off { opacity: .5; filter: grayscale(.5); cursor: default; }
-  #lever { left: 59px; top: 691px; width: 100px; }
+  #lever { left: 73px; top: 685px; width: 100px; }
   #lever img { transform-origin: 50% 88%; }
   #lever.glow, #lever.live { cursor: ew-resize; }
-  #button { left: 245px; top: 695px; width: 102px; }
-  #slot { left: 68px; top: 825px; width: 83px; }
-  #coin { left: 159px; top: 831px; width: 182px; border: 0; padding: 0; background: none; z-index: 4; }
+  #button { left: 254px; top: 688px; width: 102px; }
+  #slot { left: 82px; top: 827px; width: 83px; }
+  #coin { left: 214px; top: 834px; width: 182px; border: 0; padding: 0; background: none; z-index: 4; }
   #coin .bob { animation: bob 1.6s ease-in-out infinite; }
   #coin img { display: block; width: 100%; }
 
@@ -161,24 +161,29 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const hint = t => (hintEl.textContent = t);
 
 // Window-space constants (px inside the glass window)
-const PIV = 76, L0 = 32, L_CARRY = 8, L_STUCK = 70, CX_MIN = 100, CX_MAX = 500, CASE_X = 500, HOME_X = 460;
-const CASE_TOP = 375, CHUTE_S = .4, FLOOR = 540, GRAV = 2200;
+const PIV = 76, L0 = 20, L_CARRY = 8, L_STUCK = 48, CX_MIN = 100, CX_MAX = 500, CASE_X = 500, HOME_X = 460;
+const CASE_TOP = 375, CHUTE_S = .34, TOY_SIZE = 1.2, FLOOR = 540, GRAV = 2200;
 
 // Back-to-front order matches the mockup: bunny, cat, then pup in front
 const TOYS = [
-  { src: 'rabbit_plush.png', w: 149, h: 284, x: 82, name: 'Bow Bunny' },
+  { src: 'rabbit_plush.png', w: 149, h: 284, x: 96, name: 'Bow Bunny' },
   { src: 'cat_plush.png', w: 230, h: 243, x: 282, name: 'Kitty Cat' },
-  { src: 'dog_plush.png', w: 195, h: 220, x: 186, name: 'Sleepy Pup' },
+  { src: 'dog_plush.png', w: 195, h: 220, x: 200, name: 'Sleepy Pup' },
 ];
 TOYS.forEach(t => {
+  t.w *= TOY_SIZE; t.h *= TOY_SIZE;
+  t.won = false;
   t.L = 411 - t.h; // rope length that puts the gripper around the toy's head
   // while carried, squeeze just enough to clear the top of the glass case
   t.carryS = Math.min(1, (CASE_TOP - 10 - (PIV + L_CARRY + 53)) / t.h);
   t.sc = 1;
   t.el = new Image(); t.el.src = t.src; t.el.alt = t.name; t.el.className = 'abs';
 });
+// Toys that have been won stay out until all three are gone, then the machine restocks
 function placeToys() {
+  if (TOYS.every(t => t.won)) TOYS.forEach(t => (t.won = false));
   TOYS.forEach(t => {
+    if (t.won) { t.el.remove(); return; }
     t.sc = 1;
     t.el.style.cssText = `width:${t.w}px;left:${t.x - t.w / 2}px;top:${FLOOR - t.h}px`;
     win.insertBefore(t.el, pend);
@@ -227,13 +232,15 @@ coin.addEventListener('click', async () => {
   setActive(coinImg, false);
   hint('Coin in…');
   // the heart (137,45 in coin.png) slides left into the slot's center
-  const dx = (68 + 41) - (159 + 137);
-  await coin.animate([
+  const dx = (82 + 41) - (214 + 137);
+  const insert = coin.animate([
     { transform: 'none' },
     { transform: `translateX(${dx}px)`, offset: .7 },
     { transform: `translateX(${dx}px) scale(.5) rotateY(80deg)`, opacity: 0 },
-  ], { duration: 900, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' }).finished;
+  ], { duration: 900, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' });
+  await insert.finished;
   coin.style.visibility = 'hidden';
+  insert.cancel(); // drop the held end frame so the coin can come back later
   slot.classList.add('flash'); setTimeout(() => slot.classList.remove('flash'), 950);
   startSteer();
 });
@@ -317,7 +324,7 @@ function unstick() {
   body.classList.remove('alarm'); tint.classList.remove('on');
   fxL.classList.remove('show', 'glow'); fxR.classList.remove('show', 'glow');
   machine.classList.remove('shakeable');
-  s.toy = TOYS.reduce((a, b) => (Math.abs(b.x - s.cx) < Math.abs(a.x - s.cx) ? b : a));
+  s.toy = TOYS.filter(t => !t.won).reduce((a, b) => (Math.abs(b.x - s.cx) < Math.abs(a.x - s.cx) ? b : a));
   s.phase = 'descend2';
   hint('It’s free! Going for the ' + s.toy.name + '…');
 }
@@ -363,9 +370,19 @@ async function trapSequence() {
   await wait(450);
   await prize(t);
   door.classList.remove('open');
-  placeToys();
-  t.el.animate([{ transform: 'scale(0)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 450, easing: 'cubic-bezier(.3,1.5,.5,1)' });
+  t.won = true;
   s.toy = null;
+  if (TOYS.every(o => o.won)) {
+    placeToys();
+    hint('Restocking the machine…');
+    for (const [i, o] of TOYS.entries()) {
+      o.el.animate([{ transform: 'translateY(-420px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+        { duration: 650, delay: i * 180, easing: 'cubic-bezier(.3,1.3,.5,1)', fill: 'backwards' });
+    }
+    await wait(1300);
+  } else {
+    placeToys();
+  }
   showCoin();
 }
 async function prize(t) {
