@@ -28,7 +28,6 @@
   #stage { position: absolute; width: 1440px; height: 1080px; transform-origin: 0 0; }
   .abs { position: absolute; display: block; }
 
-  #hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   /* Machine group: everything that shakes together */
   #machine { left: 390px; top: 107px; width: 656px; height: 973px; transform-origin: 50% 100%; touch-action: none; }
@@ -114,7 +113,6 @@
 <div id="dots"></div>
 
 <div id="stage" class="abs">
-  <div id="hint" role="status" aria-live="polite"></div>
   <div id="fxL" class="abs fx"><img src="left_shake_effect.png" alt=""></div>
   <div id="fxR" class="abs fx"><img src="right_shake_effect.png" alt=""></div>
 
@@ -149,12 +147,11 @@ const stage = $('stage'), machine = $('machine'), win = $('win'), body = $('body
 const carriage = $('carriage'), pend = $('pend'), rope = $('rope'), grip = $('grip'), caseImg = $('case');
 const lever = $('lever'), leverImg = lever.querySelector('img'), button = $('button'), slot = $('slot');
 const coin = $('coin'), coinImg = $('coinImg'), door = $('door'), trapclip = $('trapclip');
-const fxL = $('fxL'), fxR = $('fxR'), hintEl = $('hint');
+const fxL = $('fxL'), fxR = $('fxR');
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const approach = (v, t, d) => (Math.abs(t - v) <= d ? t : v + Math.sign(t - v) * d);
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const hint = t => (hintEl.textContent = t);
 
 // Window-space constants (px inside the glass window)
 const PIV = 76, L0 = 20, L_CARRY = 8, L_STUCK = 48, CX_MIN = 100, CX_MAX = 500, CASE_X = 500, HOME_X = 460;
@@ -220,13 +217,11 @@ function showCoin() {
   setActive(coinImg, true);
   setOff(lever, true); setOff(button, true); button.disabled = true;
   lever.classList.remove('live');
-  hint('Click the glowing coin to play');
 }
 coin.addEventListener('click', async () => {
   if (s.phase !== 'coin') return;
   s.phase = 'inserting';
   setActive(coinImg, false);
-  hint('Coin in…');
   // the heart (137,45 in coin.png) slides left into the slot's center
   const dx = (82 + 41) - (214 + 137);
   const insert = coin.animate([
@@ -245,7 +240,6 @@ coin.addEventListener('click', async () => {
 function startSteer() {
   s.phase = 'steer'; s.leverUsed = false;
   setOff(lever, false); setActive(lever, true); lever.classList.add('live');
-  hint('Drag the glowing lever left / right to steer the claw (or use ← →)');
 }
 let leverX0 = 0, leverDrag = false;
 lever.addEventListener('pointerdown', e => {
@@ -263,7 +257,6 @@ function leverMoved() {
   s.leverUsed = true;
   setActive(lever, false);
   setOff(button, false); button.disabled = false; setActive(button, true);
-  hint('Line it up, then press the glowing button to drop the claw');
 }
 
 // ---------- step 3: button ----------
@@ -274,7 +267,6 @@ button.addEventListener('click', () => {
   setOff(lever, true); lever.classList.remove('live');
   s.dragTilt = s.keyTilt = 0;
   s.phase = 'descend1';
-  hint('Here it goes…');
 });
 
 // ---------- step 4: stuck + shake ----------
@@ -283,7 +275,6 @@ function getStuck() {
   body.classList.add('alarm'); tint.classList.add('on');
   fxL.classList.add('show', 'glow'); fxR.classList.add('show', 'glow');
   machine.classList.add('shakeable');
-  hint('Uh-oh, the claw is stuck! Drag the machine side to side to shake it loose');
 }
 let shX0 = 0;
 machine.addEventListener('pointerdown', e => {
@@ -322,7 +313,6 @@ function unstick() {
   machine.classList.remove('shakeable');
   s.toy = TOYS.filter(t => !t.won).reduce((a, b) => (Math.abs(b.x - s.cx) < Math.abs(a.x - s.cx) ? b : a));
   s.phase = 'descend2';
-  hint('It’s free! Going for the ' + s.toy.name + '…');
 }
 
 // ---------- steps 5-6: grab, carry, drop ----------
@@ -339,7 +329,6 @@ function release() {
   t.el.style.transform = '';
   win.insertBefore(t.el, caseImg); // behind the translucent case front
   s.phase = 'drop';
-  hint('Into the chute…');
 }
 function drawFall() {
   const f = s.fall, t = s.toy, w = t.w * t.sc, h = t.h * t.sc;
@@ -370,7 +359,6 @@ async function trapSequence() {
   s.toy = null;
   if (TOYS.every(o => o.won)) {
     placeToys();
-    hint('Restocking the machine…');
     for (const [i, o] of TOYS.entries()) {
       o.el.animate([{ transform: 'translateY(-420px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
         { duration: 650, delay: i * 180, easing: 'cubic-bezier(.3,1.3,.5,1)', fill: 'backwards' });
@@ -390,7 +378,6 @@ async function prize(t) {
   img.style.cssText = `width:${W}px;height:${H}px;left:${(innerWidth - W) / 2}px;top:${(innerHeight - H) / 2}px`;
   ov.appendChild(img);
   $('prizeName').textContent = 'You won ' + t.name + '!';
-  hint('You won ' + t.name + '!');
   t.el.style.visibility = 'hidden';
   ov.classList.add('show');
   const dx = r.left + r.width / 2 - innerWidth / 2, dy = r.top + r.height / 2 - innerHeight / 2;
@@ -468,7 +455,6 @@ function step(dt) {
         const el = s.toy.el;
         el.style.left = el.style.top = '0px';
         pend.insertBefore(el, rope); // behind the gripper arms
-        hint('Got the ' + s.toy.name + '!');
       }
       if (s.t > .7) { s.phase = 'ascend'; s.t = s.L; }
       break;
@@ -488,7 +474,7 @@ function step(dt) {
     }
     case 'settle':
       damp = 5; s.t += dt;
-      if ((s.t > .25 && Math.abs(s.om) < .15) || s.t > .6) release();
+      if (s.t >= .27) release(); // hover over the chute briefly, then let go
       break;
     case 'drop': {
       const f = s.fall;
