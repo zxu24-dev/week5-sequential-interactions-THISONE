@@ -1,27 +1,513 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hello</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 24px;
-      background: #fff5f8;
-      font-family: system-ui, sans-serif;
-    }
-    h1 { font-size: 4rem; color: #d0567f; margin: 0; }
-    img { width: 230px; max-width: 80vw; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claw Machine</title>
+<style>
+  :root { --glow1: rgba(255, 236, 140, .9); --glow2: rgba(255, 186, 70, .95); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: #ffeef3 url("background%20gradient.png") center / cover no-repeat;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    user-select: none; -webkit-user-select: none;
+  }
+  img { -webkit-user-drag: none; }
+  #dots { position: fixed; inset: 0; background: url("poka%20dots.png") center / cover; pointer-events: none; }
+
+  #hint {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 20;
+    background: #fff; border: 3px solid #d0567f; color: #a8335e; border-radius: 999px;
+    padding: 8px 22px; font-weight: 800; font-size: clamp(13px, 2.1vw, 19px);
+    box-shadow: 0 4px 0 #f3a9c3; white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  #stage { position: absolute; width: 1060px; height: 1110px; transform-origin: 0 0; }
+  .abs { position: absolute; display: block; }
+
+  /* Machine group: everything that shakes together */
+  #machine { left: 202px; top: 110px; width: 656px; height: 973px; transform-origin: 50% 100%; touch-action: none; }
+  #machine.shakeable { cursor: grab; }
+  #machine.shakeable:active { cursor: grabbing; }
+  #body { left: 0; top: 0; width: 656px; height: 973px; }
+  #bow { left: 138px; top: -95px; width: 380px; z-index: 6; pointer-events: none; }
+
+  /* Glass window: claw, rope, toys are clipped to it */
+  #win { left: 33px; top: 73px; width: 590px; height: 556px; border-radius: 56px; overflow: hidden; z-index: 1; }
+  #carriage { left: 0; top: -2px; width: 155px; height: 78px; background: url("claw.png") 0 0 / 155px 215px no-repeat; }
+  #pend { left: 0; top: 0; width: 0; height: 0; }
+  #rope { left: -3px; top: 0; width: 6px; background: #cc507c; }
+  #grip { left: 0; top: 0; width: 155px; height: 105px; background: url("claw.png") 0 -110px / 155px 215px no-repeat; transform-origin: 76.5px 0; }
+  #case { left: 402px; top: 368px; width: 188px; opacity: .6; pointer-events: none; }
+  #tint { inset: 0; background: rgba(255, 40, 80, .32); opacity: 0; pointer-events: none; }
+  #tint.on { animation: tint .7s ease-in-out infinite; }
+
+  /* Controls */
+  .ctrl { border: 0; padding: 0; background: none; z-index: 2; touch-action: none; transition: opacity .3s, filter .3s; }
+  .ctrl img { display: block; width: 100%; }
+  .ctrl.off { opacity: .5; filter: grayscale(.5); cursor: default; }
+  #slot { left: 51px; top: 759px; width: 83px; }
+  #lever { left: 164px; top: 752px; width: 100px; }
+  #lever img { transform-origin: 50% 88%; }
+  #button { left: 285px; top: 755px; width: 102px; }
+  #lever.glow, #lever.live { cursor: ew-resize; }
+
+  #trap { left: 435px; top: 679px; width: 188px; height: 264px; perspective: 700px; z-index: 2; }
+  #trapclip { position: absolute; inset: 10px; border-radius: 40px; overflow: hidden; }
+  #door { left: 0; top: 0; width: 188px; opacity: .68; transform-origin: 50% 100%; transition: transform .45s cubic-bezier(.3, 1.4, .5, 1); }
+  #door.open { transform: rotateX(-72deg); }
+
+  /* Shake cues */
+  .fx { width: 126px; top: 379px; opacity: 0; pointer-events: none; transition: opacity .3s; }
+  .fx.show { opacity: 1; }
+  .fx img { display: block; width: 100%; }
+  #fxL { left: 56px; } #fxR { left: 878px; }
+  #fxL.show img { animation: outL .45s ease-in-out infinite alternate; }
+  #fxR.show img { animation: outR .45s ease-in-out infinite alternate; }
+
+  /* Coin */
+  #coin { left: 840px; top: 876px; width: 182px; border: 0; padding: 0; background: none; z-index: 8; }
+  #coin .bob { animation: bob 1.6s ease-in-out infinite; }
+  #coin img { display: block; width: 100%; }
+
+  /* One consistent affordance: a warm pulsing glow means "touch me next" */
+  .glow { cursor: pointer; animation: glow 1.3s ease-in-out infinite; }
+  .flash { animation: glow .45s ease-in-out 2; }
+  #body.alarm { animation: alarm .7s ease-in-out infinite; }
+
+  @keyframes glow {
+    0%, 100% { filter: drop-shadow(0 0 3px var(--glow1)) drop-shadow(0 0 8px var(--glow2)); transform: scale(1); }
+    50% { filter: drop-shadow(0 0 10px #fffbd6) drop-shadow(0 0 28px var(--glow2)); transform: scale(1.07); }
+  }
+  @keyframes alarm {
+    0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 30, 70, .2)); }
+    50% { filter: drop-shadow(0 0 8px rgba(255, 30, 70, .95)) drop-shadow(0 0 26px rgba(255, 30, 70, .9)); }
+  }
+  @keyframes tint { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+  @keyframes outL { to { transform: translateX(-14px); } }
+  @keyframes outR { to { transform: translateX(14px); } }
+  @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+  /* Prize reveal */
+  #prize { position: fixed; inset: 0; z-index: 30; pointer-events: none; opacity: 0; transition: opacity .4s; background: rgba(255, 242, 247, .55); }
+  #prize.show { opacity: 1; }
+  #prize .halo, #prize .rays { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; transition: opacity .6s; }
+  #prize .halo { width: min(85vmin, 700px); aspect-ratio: 1; background: radial-gradient(circle, rgba(255, 255, 235, 1) 0, rgba(255, 220, 120, .8) 28%, rgba(255, 170, 205, .35) 50%, transparent 68%); }
+  #prize .rays {
+    width: min(120vmin, 1000px); aspect-ratio: 1; animation: spin 14s linear infinite;
+    background: repeating-conic-gradient(rgba(255, 228, 140, .55) 0 9deg, transparent 9deg 18deg);
+    -webkit-mask: radial-gradient(circle, #000 15%, transparent 65%); mask: radial-gradient(circle, #000 15%, transparent 65%);
+  }
+  #prize.leaving .halo, #prize.leaving .rays, #prize.leaving #prizeName { opacity: 0; }
+  #prizeName {
+    position: absolute; left: 0; right: 0; bottom: 9vh; text-align: center; transition: opacity .6s;
+    font-weight: 900; font-size: clamp(22px, 4.5vw, 44px); color: #d0567f; text-shadow: 0 3px 0 #fff, 0 0 18px #fff;
+  }
+  .prizeToy { position: fixed; filter: drop-shadow(0 0 16px #fff) drop-shadow(0 0 30px rgba(255, 210, 110, .9)); }
+</style>
 </head>
 <body>
-  <h1>hello</h1>
-  <img src="cat_plush.png" alt="Blue cat plush">
+<div id="dots"></div>
+<div id="hint" role="status" aria-live="polite"></div>
+
+<div id="stage" class="abs">
+  <div id="fxL" class="abs fx"><img src="left_shake_effect.png" alt=""></div>
+  <div id="fxR" class="abs fx"><img src="right_shake_effect.png" alt=""></div>
+
+  <div id="machine" class="abs">
+    <img id="body" class="abs" src="claw%20machine.png" alt="Claw machine">
+    <div id="win" class="abs">
+      <div id="pend" class="abs">
+        <div id="rope" class="abs"></div>
+        <div id="grip" class="abs"></div>
+      </div>
+      <div id="carriage" class="abs"></div>
+      <img id="case" class="abs" src="glass%20case.png" alt="">
+      <div id="tint" class="abs"></div>
+    </div>
+    <div id="slot" class="abs ctrl"><img src="coin%20slot.png" alt="Coin slot"></div>
+    <div id="lever" class="abs ctrl off" role="slider" tabindex="0" aria-label="Steer the claw" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="0"><img src="lever.png" alt=""></div>
+    <button id="button" class="abs ctrl off" aria-label="Drop the claw" disabled><img src="button.png" alt=""></button>
+    <div id="trap" class="abs">
+      <div id="trapclip"></div>
+      <img id="door" class="abs" src="trapdoor.png" alt="Prize door">
+    </div>
+    <img id="bow" class="abs" src="big_bow.png" alt="">
+  </div>
+
+  <button id="coin" class="abs" aria-label="Insert coin"><div class="bob"><img id="coinImg" src="coin.png" alt=""></div></button>
+</div>
+
+<div id="prize"><div class="halo"></div><div class="rays"></div><div id="prizeName"></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const stage = $('stage'), machine = $('machine'), win = $('win'), body = $('body'), tint = $('tint');
+const carriage = $('carriage'), pend = $('pend'), rope = $('rope'), grip = $('grip'), caseImg = $('case');
+const lever = $('lever'), leverImg = lever.querySelector('img'), button = $('button'), slot = $('slot');
+const coin = $('coin'), coinImg = $('coinImg'), door = $('door'), trapclip = $('trapclip');
+const fxL = $('fxL'), fxR = $('fxR'), hintEl = $('hint');
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const approach = (v, t, d) => (Math.abs(t - v) <= d ? t : v + Math.sign(t - v) * d);
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const hint = t => (hintEl.textContent = t);
+
+// Window-space constants (px inside the glass window)
+const PIV = 76, L0 = 32, L_STUCK = 150, CX_MIN = 100, CX_MAX = 496, CASE_X = 496, HOME_X = 300;
+const TOY_S = .55, CHUTE_S = .4, FLOOR = 540, GRAV = 2200;
+
+const TOYS = [
+  { src: 'cat_plush.png', w: 230, h: 243, x: 110, name: 'Kitty Cat' },
+  { src: 'dog_plush.png', w: 195, h: 220, x: 235, name: 'Sleepy Pup' },
+  { src: 'rabbit_plush.png', w: 149, h: 284, x: 350, name: 'Bow Bunny' },
+];
+function placeToy(t) {
+  const el = t.el;
+  el.style.cssText = `width:${t.dw}px;left:${t.x - t.dw / 2}px;top:${FLOOR - t.dh}px`;
+  win.insertBefore(el, pend);
+}
+TOYS.forEach(t => {
+  t.dw = t.w * TOY_S; t.dh = t.h * TOY_S;
+  t.L = 411 - t.dh; // rope length that puts the gripper around the toy's head
+  t.el = new Image(); t.el.src = t.src; t.el.alt = t.name; t.el.className = 'abs';
+  placeToy(t);
+});
+
+const s = {
+  phase: 'coin', cx: HOME_X, v: 0, th: 0, om: 0, L: L0, cl: 1,
+  tilt: 0, dragTilt: 0, keyTilt: 0, vis: 0, leverUsed: false,
+  mx: 0, mxPrev: 0, mvPrev: 0, vcPrev: 0, shDrag: false, shakes: 0, lastExt: 0, lastDir: 0,
+  toy: null, carry: false, fall: null, t: 0,
+};
+
+// ---------- fit stage to screen ----------
+let S = 1;
+function fit() {
+  const top = 62, W = innerWidth, H = innerHeight - top - 6;
+  S = Math.min(W / 1060, H / 1110);
+  stage.style.transform = `scale(${S})`;
+  stage.style.left = (W - 1060 * S) / 2 + 'px';
+  stage.style.top = top + (H - 1110 * S) / 2 + 'px';
+}
+addEventListener('resize', fit); fit();
+
+function setActive(el, on) { el.classList.toggle('glow', on); }
+function setOff(el, off) { el.classList.toggle('off', off); }
+
+// ---------- step 1: coin ----------
+function showCoin() {
+  s.phase = 'coin';
+  coin.getAnimations().forEach(a => a.cancel());
+  coin.style.visibility = '';
+  coin.animate([{ transform: 'translateX(240px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+    { duration: 700, easing: 'cubic-bezier(.2,.9,.3,1.2)' });
+  setActive(coinImg, true);
+  setOff(lever, true); setOff(button, true); button.disabled = true;
+  lever.classList.remove('live');
+  hint('Click the glowing coin to play');
+}
+coin.addEventListener('click', async () => {
+  if (s.phase !== 'coin') return;
+  s.phase = 'inserting';
+  setActive(coinImg, false);
+  hint('Coin in…');
+  // heart center (137,45 in coin.png) travels to the slot center
+  const dx = (202 + 92) - (840 + 137);
+  const a = coin.animate([
+    { transform: 'none' },
+    { transform: `translateX(${dx}px)`, offset: .75 },
+    { transform: `translateX(${dx}px) scale(.55, .55) rotateY(80deg)`, opacity: 0 },
+  ], { duration: 1000, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' });
+  await a.finished;
+  coin.style.visibility = 'hidden';
+  slot.classList.add('flash'); setTimeout(() => slot.classList.remove('flash'), 950);
+  startSteer();
+});
+
+// ---------- step 2: lever ----------
+function startSteer() {
+  s.phase = 'steer'; s.leverUsed = false;
+  setOff(lever, false); setActive(lever, true); lever.classList.add('live');
+  hint('Drag the glowing lever left / right to steer the claw (or use ← →)');
+}
+let leverX0 = 0, leverDrag = false;
+lever.addEventListener('pointerdown', e => {
+  if (s.phase !== 'steer') return;
+  leverDrag = true; leverX0 = e.clientX; lever.setPointerCapture(e.pointerId); e.stopPropagation();
+});
+lever.addEventListener('pointermove', e => {
+  if (leverDrag) s.dragTilt = clamp((e.clientX - leverX0) / S / 55, -1, 1);
+});
+const endLever = () => { leverDrag = false; s.dragTilt = 0; };
+lever.addEventListener('pointerup', endLever);
+lever.addEventListener('pointercancel', endLever);
+
+function leverMoved() {
+  s.leverUsed = true;
+  setActive(lever, false);
+  setOff(button, false); button.disabled = false; setActive(button, true);
+  hint('Line it up, then press the glowing button to drop the claw');
+}
+
+// ---------- step 3: button ----------
+button.addEventListener('click', () => {
+  if (s.phase !== 'steer' || !s.leverUsed) return;
+  button.querySelector('img').animate([{ transform: 'none' }, { transform: 'translateY(6px) scaleY(.86)' }, { transform: 'none' }], { duration: 220 });
+  setActive(button, false); setOff(button, true); button.disabled = true;
+  setOff(lever, true); lever.classList.remove('live');
+  s.dragTilt = s.keyTilt = 0;
+  s.phase = 'descend1';
+  hint('Here it goes…');
+});
+
+// ---------- step 4: stuck + shake ----------
+function getStuck() {
+  s.phase = 'stuck'; s.shakes = 0; s.lastExt = s.mx; s.lastDir = 0;
+  body.classList.add('alarm'); tint.classList.add('on');
+  fxL.classList.add('show', 'glow'); fxR.classList.add('show', 'glow');
+  machine.classList.add('shakeable');
+  hint('Uh-oh, the claw is stuck! Drag the machine side to side to shake it loose');
+}
+let shX0 = 0;
+machine.addEventListener('pointerdown', e => {
+  if (s.phase !== 'stuck') return;
+  s.shDrag = true; shX0 = e.clientX - s.mx * S / .8; machine.setPointerCapture(e.pointerId);
+});
+machine.addEventListener('pointermove', e => {
+  if (!s.shDrag || s.phase !== 'stuck') return;
+  s.mx = clamp((e.clientX - shX0) / S * .8, -55, 55);
+  trackShake();
+});
+const endShake = () => { s.shDrag = false; };
+machine.addEventListener('pointerup', endShake);
+machine.addEventListener('pointercancel', endShake);
+
+function trackShake() {
+  const d = s.mx - s.lastExt;
+  if (Math.abs(d) < 16) return;
+  const dir = Math.sign(d);
+  if (dir !== s.lastDir) {
+    if (s.lastDir !== 0) shakeHit();
+    s.lastDir = dir;
+  }
+  s.lastExt = s.mx;
+}
+function shakeHit() {
+  if (s.phase !== 'stuck') return;
+  s.shakes++;
+  (s.lastDir > 0 ? fxR : fxL).animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 250 });
+  if (s.shakes >= 6) unstick();
+}
+function unstick() {
+  s.shDrag = false;
+  body.classList.remove('alarm'); tint.classList.remove('on');
+  fxL.classList.remove('show', 'glow'); fxR.classList.remove('show', 'glow');
+  machine.classList.remove('shakeable');
+  s.toy = TOYS.reduce((a, b) => (Math.abs(b.x - s.cx) < Math.abs(a.x - s.cx) ? b : a));
+  s.phase = 'descend2';
+  hint('It’s free! Going for the ' + s.toy.name + '…');
+}
+
+// ---------- steps 5-6: grab, carry, drop ----------
+function release() {
+  const t = s.toy, d = s.L + 53 + t.dh / 2;
+  s.fall = { x: s.cx - d * Math.sin(s.th), y: PIV + d * Math.cos(s.th), vy: 0, y0: 0, sc: TOY_S };
+  s.fall.y0 = s.fall.y;
+  s.carry = false; s.cl = 1;
+  t.el.style.transform = '';
+  win.insertBefore(t.el, caseImg); // behind the translucent case front
+  s.phase = 'drop';
+  hint('Into the chute…');
+}
+function drawFall() {
+  const f = s.fall, t = s.toy, w = t.w * f.sc, h = t.h * f.sc;
+  t.el.style.width = w + 'px';
+  t.el.style.left = f.x - w / 2 + 'px';
+  t.el.style.top = f.y - h / 2 + 'px';
+  return f.y - h / 2;
+}
+
+// ---------- step 7: trapdoor + prize ----------
+async function trapSequence() {
+  const t = s.toy, el = t.el;
+  const w = t.w * CHUTE_S, h = t.h * CHUTE_S;
+  el.style.cssText = `width:${w}px;left:${84 - w / 2}px;top:${244 - 16 - h}px`;
+  trapclip.appendChild(el);
+  await el.animate([
+    { transform: 'translateY(-260px)', easing: 'cubic-bezier(.5,0,1,1)' },
+    { transform: 'translateY(0)', offset: .65, easing: 'ease-out' },
+    { transform: 'translateY(-20px)', offset: .82, easing: 'ease-in' },
+    { transform: 'translateY(0)' },
+  ], { duration: 750 }).finished;
+  await wait(250);
+  door.classList.add('open');
+  await wait(450);
+  await prize(t);
+  door.classList.remove('open');
+  placeToy(t);
+  t.el.animate([{ transform: 'scale(0)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 450, easing: 'cubic-bezier(.3,1.5,.5,1)' });
+  s.toy = null;
+  showCoin();
+}
+async function prize(t) {
+  s.phase = 'prize';
+  const r = t.el.getBoundingClientRect();
+  const ov = $('prize');
+  const H = Math.min(innerHeight * .5, 460), W = H * t.w / t.h;
+  const img = new Image(); img.src = t.src; img.className = 'prizeToy'; img.alt = t.name;
+  img.style.cssText = `width:${W}px;height:${H}px;left:${(innerWidth - W) / 2}px;top:${(innerHeight - H) / 2}px`;
+  ov.appendChild(img);
+  $('prizeName').textContent = 'You won ' + t.name + '!';
+  hint('You won ' + t.name + '!');
+  t.el.style.visibility = 'hidden';
+  ov.classList.add('show');
+  const dx = r.left + r.width / 2 - innerWidth / 2, dy = r.top + r.height / 2 - innerHeight / 2;
+  await img.animate([
+    { transform: `translate(${dx}px,${dy}px) scale(${r.width / W})` },
+    { transform: 'translateY(-24px) scale(1.12)', offset: .75 },
+    { transform: 'none' },
+  ], { duration: 1000, easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'forwards' }).finished;
+  await wait(1700);
+  ov.classList.add('leaving');
+  await img.animate([{ transform: 'none' }, { transform: `translateY(${-innerHeight}px) rotate(-14deg) scale(.7)` }],
+    { duration: 800, easing: 'cubic-bezier(.5,0,.8,.4)', fill: 'forwards' }).finished;
+  ov.classList.remove('show', 'leaving');
+  img.remove();
+}
+
+// ---------- keyboard ----------
+addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const dir = e.key === 'ArrowLeft' ? -1 : 1;
+  if (s.phase === 'steer') { s.keyTilt = dir; e.preventDefault(); }
+  if (s.phase === 'stuck' && !e.repeat) {
+    s.mx = dir * 45; trackShake(); e.preventDefault();
+  }
+});
+addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') s.keyTilt = 0;
+});
+
+// ---------- physics ----------
+function collide() {
+  // gripper bottom (and carried toy bottom) bounce off the glass walls
+  const pts = [[s.L + 103, 73]];
+  if (s.carry) pts.push([s.L + 53 + s.toy.dh, s.toy.dw / 2]);
+  for (const [D, hw] of pts) {
+    const lo = 4 + hw, hi = 586 - hw, x = s.cx - D * Math.sin(s.th);
+    if (x < lo) { s.th = Math.asin(clamp((s.cx - lo) / D, -1, 1)); if (s.om > 0) s.om *= -.45; }
+    else if (x > hi) { s.th = Math.asin(clamp((s.cx - hi) / D, -1, 1)); if (s.om < 0) s.om *= -.45; }
+  }
+  s.th = clamp(s.th, -.75, .75);
+}
+
+function step(dt) {
+  const prevCx = s.cx;
+  let damp = 2;
+  switch (s.phase) {
+    case 'steer': {
+      s.tilt = s.dragTilt || s.keyTilt;
+      s.v += clamp(s.tilt * 330 - s.v, -1400 * dt, 1400 * dt);
+      s.cx += s.v * dt;
+      if (s.cx < CX_MIN) { s.cx = CX_MIN; s.v = 0; }
+      if (s.cx > CX_MAX) { s.cx = CX_MAX; s.v = 0; }
+      damp = .6;
+      if (!s.leverUsed && Math.abs(s.tilt) > .25) leverMoved();
+      break;
+    }
+    case 'descend1':
+      damp = 4; s.L = approach(s.L, L_STUCK, 190 * dt);
+      if (s.L === L_STUCK) getStuck();
+      break;
+    case 'stuck':
+      damp = 1; s.om += (Math.random() - .5) * 0.6;
+      break;
+    case 'descend2': {
+      damp = 5; const t = s.toy;
+      s.cx = approach(s.cx, t.x, 200 * dt);
+      s.L = approach(s.L, t.L, 190 * dt);
+      if (s.cx === t.x && s.L === t.L) { s.phase = 'grab'; s.t = 0; }
+      break;
+    }
+    case 'grab':
+      damp = 8; s.t += dt; s.cl = approach(s.cl, .8, 1.2 * dt);
+      if (s.t > .35 && !s.carry) {
+        s.carry = true;
+        const el = s.toy.el;
+        el.style.left = el.style.top = '0px';
+        pend.insertBefore(el, rope); // behind the gripper arms
+        hint('Got the ' + s.toy.name + '!');
+      }
+      if (s.t > .7) s.phase = 'ascend';
+      break;
+    case 'ascend':
+      damp = 3; s.L = approach(s.L, L0, 170 * dt);
+      if (s.L === L0) s.phase = 'toCase';
+      break;
+    case 'toCase': {
+      damp = 1.2; const d = CASE_X - s.cx;
+      s.v += clamp(clamp(d * 3, -260, 260) - s.v, -900 * dt, 900 * dt);
+      s.cx += s.v * dt;
+      if (Math.abs(d) < .5 && Math.abs(s.v) < 6) { s.cx = CASE_X; s.v = 0; s.phase = 'settle'; s.t = 0; }
+      break;
+    }
+    case 'settle':
+      damp = 5; s.t += dt;
+      if ((Math.abs(s.th) < .02 && Math.abs(s.om) < .08) || s.t > 1.6) release();
+      break;
+    case 'drop': {
+      const f = s.fall;
+      f.vy += 1700 * dt; f.y += f.vy * dt;
+      f.x = approach(f.x, CASE_X, 300 * dt);
+      f.sc = TOY_S + (CHUTE_S - TOY_S) * clamp((f.y - f.y0) / (460 - f.y0), 0, 1);
+      if (drawFall() > 560) { s.phase = 'trap'; trapSequence(); }
+      break;
+    }
+    default: // coin / inserting / trap / prize: carriage drifts home
+      s.cx = approach(s.cx, HOME_X, 160 * dt);
+  }
+  if (s.phase !== 'grab' && !s.carry) s.cl = approach(s.cl, 1, 1.5 * dt);
+
+  // machine spring-back when not being dragged
+  if (!s.shDrag) s.mx += -s.mx * Math.min(1, 10 * dt);
+  const mv = (s.mx - s.mxPrev) / dt, am = (mv - s.mvPrev) / dt;
+  s.mxPrev = s.mx; s.mvPrev = mv;
+  const vc = (s.cx - prevCx) / dt, ac = (vc - s.vcPrev) / dt;
+  s.vcPrev = vc;
+
+  // pendulum with a moving pivot: θ'' = -(g/L)sinθ + (a/L)cosθ - cθ'
+  const a = clamp(ac + am, -6000, 6000);
+  const Lp = s.L + 70 + (s.carry ? s.toy.dh * .5 : 0);
+  s.om += (-(GRAV / Lp) * Math.sin(s.th) + (a / Lp) * Math.cos(s.th) - damp * s.om) * dt;
+  s.th += s.om * dt;
+  collide();
+}
+
+function render(dt) {
+  carriage.style.transform = `translateX(${s.cx - 77.5}px)`;
+  pend.style.transform = `translate(${s.cx}px,${PIV}px) rotate(${s.th}rad)`;
+  rope.style.height = s.L + 'px';
+  grip.style.transform = `translateY(${s.L - 2}px) translateX(-76.5px) scaleX(${s.cl})`;
+  if (s.carry) s.toy.el.style.transform = `translate(${-s.toy.dw / 2}px,${s.L + 53}px)`;
+  machine.style.transform = `translateX(${s.mx}px) rotate(${s.mx * .05}deg)`;
+  s.vis += (s.tilt - s.vis) * Math.min(1, 14 * dt);
+  if (s.phase !== 'steer') s.tilt = 0;
+  leverImg.style.transform = `rotate(${s.vis * 28}deg)`;
+  lever.setAttribute('aria-valuenow', s.tilt.toFixed(1));
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(.033, Math.max(.001, (now - last) / 1000));
+  last = now;
+  step(dt); render(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+showCoin();
+</script>
 </body>
 </html>
