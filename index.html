@@ -328,6 +328,7 @@ function release() {
   s.carry = false;
   t.el.style.transform = '';
   win.insertBefore(t.el, caseImg); // behind the translucent case front
+  drawFall(); // position it now so it never shows a frame at the window's corner
   s.phase = 'drop';
 }
 function drawFall() {
@@ -474,7 +475,7 @@ function step(dt) {
     }
     case 'settle':
       damp = 5; s.t += dt;
-      if (s.t >= .27) release(); // hover over the chute briefly, then let go
+      if (s.t >= .1) release(); // hover over the chute briefly, then let go
       break;
     case 'drop': {
       const f = s.fall;
