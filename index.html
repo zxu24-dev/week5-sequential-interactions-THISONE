@@ -55,7 +55,7 @@
   #lever.glow, #lever.live { cursor: ew-resize; }
   #button { left: 254px; top: 688px; width: 102px; }
   #slot { left: 82px; top: 827px; width: 83px; }
-  #coin { left: 214px; top: 834px; width: 182px; border: 0; padding: 0; background: none; z-index: 4; }
+  #coin { left: -200px; top: 834px; width: 182px; border: 0; padding: 0; background: none; z-index: 4; }
   #coin { cursor: grab; touch-action: none; }
   #coin.dragging { cursor: grabbing; z-index: 7; }
   #coin .bob { animation: bob 1.6s ease-in-out infinite; }
@@ -65,14 +65,17 @@
 
   #trap { left: 439px; top: 677px; width: 188px; height: 264px; perspective: 700px; z-index: 2; }
   #trapclip { position: absolute; inset: 10px; border-radius: 40px; overflow: hidden; }
-  #door { left: 0; top: 0; width: 188px; opacity: .68; transform-origin: 50% 100%; transition: transform .45s cubic-bezier(.3, 1.4, .5, 1); }
-  #door.open { transform: rotateX(-72deg); }
+  #door { left: 0; top: 0; width: 188px; opacity: .68; }
+  /* side door: hinged at its bottom on the case's right edge; closed = upright, open = swung out */
+  #side { left: 181px; top: 6px; width: 144px; transform-origin: 5px 242px; transform: rotate(-25.4deg); opacity: 0;
+    transition: transform .45s cubic-bezier(.3, 1.5, .5, 1), opacity .12s; }
+  #side.open { transform: rotate(0deg); opacity: 1; }
 
   /* Shake cues */
-  .fx { width: 126px; top: 513px; opacity: 0; pointer-events: none; transition: opacity .3s; }
+  .fx { width: 126px; top: 378px; opacity: 0; pointer-events: none; transition: opacity .3s; }
   .fx.show { opacity: 1; }
   .fx img { display: block; width: 100%; }
-  #fxL { left: 174px; } #fxR { left: 1144px; }
+  #fxL { left: 253px; } #fxR { left: 1058px; }
   #fxL.show img { animation: outL .45s ease-in-out infinite alternate; }
   #fxR.show img { animation: outR .45s ease-in-out infinite alternate; }
 
@@ -117,8 +120,8 @@
 <div id="dots"></div>
 
 <div id="stage" class="abs">
-  <div id="fxL" class="abs fx"><img src="left_shake_effect.png" alt=""></div>
-  <div id="fxR" class="abs fx"><img src="right_shake_effect.png" alt=""></div>
+  <div id="fxL" class="abs fx"><img src="arrow_left_shake_effect.png" alt=""></div>
+  <div id="fxR" class="abs fx"><img src="arrow_right_shake_effect.png" alt=""></div>
 
   <div id="machine" class="abs">
     <img id="body" class="abs" src="claw%20machine.png" alt="Claw machine">
@@ -137,7 +140,8 @@
     <button id="coin" class="abs" aria-label="Insert coin"><div class="bob"><img id="coinImg" src="coin.png" alt=""></div></button>
     <div id="trap" class="abs">
       <div id="trapclip"></div>
-      <img id="door" class="abs" src="trapdoor.png" alt="Prize door">
+      <img id="door" class="abs" src="trapdoor.png" alt="Prize case">
+      <img id="side" class="abs" src="trapdoor_SIDE.png" alt="">
     </div>
     <img id="bow" class="abs" src="big_bow.png" alt="">
   </div>
@@ -150,7 +154,7 @@ const $ = id => document.getElementById(id);
 const stage = $('stage'), machine = $('machine'), win = $('win'), body = $('body'), tint = $('tint');
 const carriage = $('carriage'), pend = $('pend'), rope = $('rope'), grip = $('grip'), caseImg = $('case');
 const lever = $('lever'), leverImg = lever.querySelector('img'), button = $('button'), slot = $('slot');
-const coin = $('coin'), coinImg = $('coinImg'), door = $('door'), trapclip = $('trapclip');
+const coin = $('coin'), coinImg = $('coinImg'), door = $('door'), side = $('side'), trapclip = $('trapclip');
 const fxL = $('fxL'), fxR = $('fxR');
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -223,8 +227,8 @@ function showCoin() {
   setOff(lever, true); setOff(button, true); button.disabled = true;
   lever.classList.remove('live');
 }
-// Drag the coin to the slot. Offset that puts the coin's heart (137,45 in coin.png) on the slot's center:
-const SLOT_DX = (82 + 41) - (214 + 137), SLOT_DY = (827 + 52) - (834 + 45), SLOT_RADIUS = 70;
+// Drag the coin to the slot. Offset that puts the coin's heart (45,45 in coin.png) on the slot's center:
+const SLOT_DX = (82 + 41) - (-200 + 45), SLOT_DY = (827 + 52) - (834 + 45), SLOT_RADIUS = 70;
 let coinDrag = null;
 coin.addEventListener('pointerdown', e => {
   if (s.phase !== 'coin') return;
@@ -302,8 +306,9 @@ function leverMoved() {
 button.addEventListener('click', () => {
   if (s.phase !== 'steer' || !s.leverUsed) return;
   button.querySelector('img').animate([{ transform: 'none' }, { transform: 'translateY(6px) scaleY(.86)' }, { transform: 'none' }], { duration: 220 });
-  setActive(button, false); setOff(button, true); button.disabled = true;
-  setOff(lever, true); lever.classList.remove('live');
+  // used controls stay lit (but no longer glow) for the rest of the round
+  setActive(button, false); button.disabled = true;
+  setActive(lever, false); lever.classList.remove('live');
   s.dragTilt = s.keyTilt = 0;
   s.phase = 'descend1';
 });
@@ -391,10 +396,20 @@ async function trapSequence() {
     { transform: 'translateY(0)' },
   ], { duration: 750 }).finished;
   await wait(250);
-  door.classList.add('open');
-  await wait(450);
+  side.classList.add('open');
+  await wait(400);
+  // lift the toy out of the clipped case (same spot) and slide it out the side
+  el.style.left = parseFloat(el.style.left) + 10 + 'px';
+  el.style.top = parseFloat(el.style.top) + 10 + 'px';
+  $('trap').insertBefore(el, door);
+  await el.animate([
+    { transform: 'none' },
+    { transform: 'translate(110px,-26px) rotate(8deg)', offset: .55 },
+    { transform: 'translate(210px,0) rotate(0deg)' },
+  ], { duration: 650, easing: 'ease-in-out', fill: 'forwards' }).finished;
   await prize(t);
-  door.classList.remove('open');
+  el.getAnimations().forEach(a => a.cancel());
+  side.classList.remove('open');
   t.won = true;
   s.toy = null;
   if (TOYS.every(o => o.won)) {
@@ -478,9 +493,14 @@ function step(dt) {
       damp = 4; s.L = approach(s.L, L_STUCK, 160 * dt);
       if (s.L === L_STUCK) getStuck();
       break;
-    case 'stuck':
+    case 'stuck': {
       damp = 1; s.om += (Math.random() - .5) * 0.6;
+      // every 1.6s the machine gives a small left-right rattle to say "shake me"
+      s.wigT = (s.wigT || 0) + dt;
+      const k = s.wigT % 1.6;
+      s.wig = s.shDrag || k > .5 ? 0 : 9 * Math.sin(k * Math.PI * 2 / .125) * (1 - k / .5);
       break;
+    }
     case 'descend2': {
       damp = 5; const t = s.toy;
       s.cx = approach(s.cx, t.x, 200 * dt);
@@ -531,6 +551,7 @@ function step(dt) {
   if (s.phase !== 'grab' && !s.carry) s.cl = approach(s.cl, 1, 1.5 * dt);
 
   // machine springs back when not being dragged
+  if (s.phase !== 'stuck') s.wig = 0;
   if (!s.shDrag) s.mx += -s.mx * Math.min(1, 10 * dt);
   const mv = (s.mx - s.mxPrev) / dt, am = (mv - s.mvPrev) / dt;
   s.mxPrev = s.mx; s.mvPrev = mv;
@@ -551,7 +572,8 @@ function render(dt) {
   rope.style.height = s.L + 'px';
   grip.style.transform = `translateY(${s.L - 2}px) translateX(-76.5px) scaleX(${s.cl})`;
   if (s.carry) drawCarried();
-  machine.style.transform = `translateX(${s.mx}px) rotate(${s.mx * .05}deg)`;
+  const mxv = s.mx + (s.wig || 0);
+  machine.style.transform = `translateX(${mxv}px) rotate(${mxv * .05}deg)`;
   if (s.phase !== 'steer') s.tilt = 0;
   s.vis += (s.tilt - s.vis) * Math.min(1, 14 * dt);
   leverImg.style.transform = `rotate(${s.vis * 28}deg)`;
