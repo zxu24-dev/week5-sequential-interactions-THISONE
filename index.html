@@ -49,13 +49,17 @@
   /* Controls (positions follow the mockup) */
   .ctrl { border: 0; padding: 0; background: none; z-index: 2; touch-action: none; transition: opacity .3s, filter .3s; }
   .ctrl img { display: block; width: 100%; }
-  .ctrl.off { opacity: .5; filter: grayscale(.5); cursor: default; }
-  #lever { left: 61px; top: 660px; width: 125px; }
+  .ctrl.off { opacity: .55; filter: grayscale(1); cursor: default; }
+  /* counter (front panel) with lever and button standing on its lid, per the reference */
+  #counter { left: 27px; top: 718px; width: 375px; z-index: 1; pointer-events: none; }
+  #lever { left: 51px; top: 643px; width: 118px; }
   #lever img { transform-origin: 50% 88%; }
   #lever.glow, #lever.live { cursor: ew-resize; }
-  #button { left: 241px; top: 664px; width: 128px; }
-  #slot { left: 82px; top: 827px; width: 83px; }
-  #coin { left: -200px; top: 834px; width: 182px; border: 0; padding: 0; background: none; z-index: 4; }
+  #button { left: 238px; top: 649px; width: 120px; }
+  /* coin slot and coin sit outside the machine on the left */
+  #slot { left: -108px; top: 693px; width: 83px; transition: opacity .4s, transform .4s; }
+  #slot.gone { opacity: 0; transform: scale(.6); pointer-events: none; }
+  #coin { left: -312px; top: 699px; width: 182px; border: 0; padding: 0; background: none; z-index: 4; }
   #coin { cursor: grab; touch-action: none; }
   #coin.dragging { cursor: grabbing; z-index: 7; }
   #coin .bob { animation: bob 1.6s ease-in-out infinite; }
@@ -67,13 +71,10 @@
   #coin .coinArrows { position: absolute; left: 0; top: 0; clip-path: inset(0 0 0 98px); transition: opacity .25s; }
   #coin.moving .coinArrows { opacity: 0; }
 
-  #trap { left: 439px; top: 677px; width: 188px; height: 264px; perspective: 700px; z-index: 2; }
-  #trapclip { position: absolute; inset: 10px; border-radius: 40px; overflow: hidden; }
-  #door { left: 0; top: 0; width: 188px; opacity: .68; }
-  /* side door: hinged at its bottom on the case's right edge; closed = upright, open = swung out */
-  #side { left: 620px; top: 683px; width: 144px; transform-origin: 5px 242px; transform: rotate(-25.4deg); opacity: 0;
-    transition: transform .45s cubic-bezier(.3, 1.5, .5, 1), opacity .12s; }
-  #side.open { transform: rotate(0deg); opacity: 1; }
+  /* Prize slide: the curved half sits inside the machine, the straight half pokes out the right wall.
+     The toy inside the machine is clipped at the wall; a twin behind the machine body carries on outside. */
+  #chute { left: 442px; top: 673px; width: 321px; height: 222px; z-index: 1; clip-path: inset(0 113px -400px 0); pointer-events: none; }
+  #slides { left: 442px; top: 673px; width: 321px; z-index: 1; opacity: .75; pointer-events: none; }
 
   /* Shake cues */
   .fx { width: 126px; top: 514px; opacity: 0; pointer-events: none; transition: opacity .3s; }
@@ -128,7 +129,6 @@
   <div id="fxR" class="abs fx"><img src="arrow_right_shake_effect.png" alt=""></div>
 
   <div id="machine" class="abs">
-    <img id="side" class="abs" src="trapdoor_SIDE.png" alt="">
     <img id="body" class="abs" src="claw%20machine.png" alt="Claw machine">
     <div id="win" class="abs">
       <div id="pend" class="abs">
@@ -139,14 +139,13 @@
       <img id="case" class="abs" src="glass%20case.png" alt="">
       <div id="tint" class="abs"></div>
     </div>
+    <img id="counter" class="abs" src="counter.png" alt="">
+    <div id="chute" class="abs"></div>
+    <img id="slides" class="abs" src="slides.png" alt="Prize slide">
     <div id="lever" class="abs ctrl off" role="slider" tabindex="0" aria-label="Steer the claw" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="0"><img src="lever.png" alt=""></div>
     <button id="button" class="abs ctrl off" aria-label="Drop the claw" disabled><img src="button.png" alt=""></button>
     <div id="slot" class="abs ctrl"><img src="coin%20slot.png" alt="Coin slot"></div>
     <button id="coin" class="abs" aria-label="Insert coin"><div class="bob"><div id="coinImg"><img class="coinHeart" src="coin.png" alt=""><img class="coinArrows" src="coin.png" alt=""></div></div></button>
-    <div id="trap" class="abs">
-      <div id="trapclip"></div>
-      <img id="door" class="abs" src="trapdoor.png" alt="Prize case">
-    </div>
     <img id="bow" class="abs" src="big_bow.png" alt="">
   </div>
 </div>
@@ -158,7 +157,7 @@ const $ = id => document.getElementById(id);
 const stage = $('stage'), machine = $('machine'), win = $('win'), body = $('body'), tint = $('tint');
 const carriage = $('carriage'), pend = $('pend'), rope = $('rope'), grip = $('grip'), caseImg = $('case');
 const lever = $('lever'), leverImg = lever.querySelector('img'), button = $('button'), slot = $('slot');
-const coin = $('coin'), coinImg = $('coinImg'), door = $('door'), side = $('side'), trapclip = $('trapclip');
+const coin = $('coin'), coinImg = $('coinImg'), chute = $('chute');
 const fxL = $('fxL'), fxR = $('fxR');
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -226,6 +225,7 @@ function showCoin() {
   coin.style.visibility = '';
   coin.style.transform = '';
   coin.classList.remove('moving');
+  slot.classList.remove('gone'); // the slot only comes back once a prize has been collected
   coin.animate([{ transform: 'translateY(30px) scale(.6)', opacity: 0 }, { transform: 'none', opacity: 1 }],
     { duration: 600, easing: 'cubic-bezier(.2,.9,.3,1.3)' });
   setActive(coinImg, true);
@@ -233,7 +233,7 @@ function showCoin() {
   lever.classList.remove('live');
 }
 // Drag the coin to the slot. Offset that puts the coin's heart (45,45 in coin.png) on the slot's center:
-const SLOT_DX = (82 + 41) - (-200 + 45), SLOT_DY = (827 + 52) - (834 + 45), SLOT_RADIUS = 70;
+const SLOT_DX = (-108 + 41.5) - (-312 + 45), SLOT_DY = (693 + 52.5) - (699 + 45), SLOT_RADIUS = 70;
 let coinDrag = null;
 coin.addEventListener('pointerdown', e => {
   if (s.phase !== 'coin') return;
@@ -282,7 +282,8 @@ async function insertCoin(fromX, fromY) {
   await insert.finished;
   coin.style.visibility = 'hidden';
   insert.cancel(); // drop the held end frame so the coin can come back later
-  slot.classList.add('flash'); setTimeout(() => slot.classList.remove('flash'), 950);
+  slot.classList.add('flash');
+  setTimeout(() => { slot.classList.remove('flash'); slot.classList.add('gone'); }, 950); // used up until the next prize
   startSteer();
 }
 
@@ -313,9 +314,9 @@ function leverMoved() {
 button.addEventListener('click', () => {
   if (s.phase !== 'steer' || !s.leverUsed) return;
   button.querySelector('img').animate([{ transform: 'none' }, { transform: 'translateY(6px) scaleY(.86)' }, { transform: 'none' }], { duration: 220 });
-  // used controls stay lit (but no longer glow) for the rest of the round
-  setActive(button, false); button.disabled = true;
-  setActive(lever, false); lever.classList.remove('live');
+  // both controls are done for this round: grey them out
+  setActive(button, false); setOff(button, true); button.disabled = true;
+  setActive(lever, false); setOff(lever, true); lever.classList.remove('live');
   s.dragTilt = s.keyTilt = 0;
   s.phase = 'descend1';
 });
@@ -390,43 +391,39 @@ function drawFall() {
   return f.y - h / 2;
 }
 
-// ---------- step 7: trapdoor + prize ----------
-async function trapSequence() {
+// ---------- step 7: slide + prize ----------
+// Path of the toy's centre in slide.png coordinates: drop in from above, ride the inside of the
+// curve (centre 205,0) down to the bottom, then run along the straight half and out of the machine.
+function slidePath() {
+  const R = 160, frames = [{ x: 93, y: -70, o: 0 }];
+  const a0 = Math.acos((205 - 93) / R);
+  frames.push({ x: 93, y: R * Math.sin(a0), o: .22 });
+  for (let i = 1; i <= 8; i++) {
+    const a = a0 + (Math.PI / 2 - a0) * i / 8;
+    frames.push({ x: 205 - R * Math.cos(a), y: R * Math.sin(a), o: .22 + .38 * i / 8, r: 14 * Math.sin(Math.PI * i / 8) });
+  }
+  frames.push({ x: 300, y: 160, o: .8 }, { x: 400, y: 168, o: 1 });
+  return frames.map(f => ({ transform: `translate(${f.x}px,${f.y}px) rotate(${f.r || 0}deg)`, offset: f.o }));
+}
+async function slideSequence() {
   const t = s.toy, el = t.el;
   const w = t.w * CHUTE_S, h = t.h * CHUTE_S;
-  el.style.cssText = `width:${w}px;left:${84 - w / 2}px;top:${244 - 16 - h}px`;
-  trapclip.appendChild(el);
-  await el.animate([
-    { transform: 'translateY(-260px)', easing: 'cubic-bezier(.5,0,1,1)' },
-    { transform: 'translateY(0)', offset: .65, easing: 'ease-out' },
-    { transform: 'translateY(-20px)', offset: .82, easing: 'ease-in' },
-    { transform: 'translateY(0)' },
-  ], { duration: 750 }).finished;
-  await wait(250);
-  side.classList.add('open');
-  await wait(400);
-  // The toy drifts right inside the glass until the case wall hides it, while a twin
-  // behind the machine body floats out of the side door on the same path.
+  // inside copy (clipped at the machine wall) and an outside twin behind the machine body
+  el.style.cssText = `width:${w}px;left:${-w / 2}px;top:${-h / 2}px`;
+  chute.appendChild(el);
   const twin = el.cloneNode();
-  twin.style.left = 439 + 10 + parseFloat(el.style.left) + 'px';
-  twin.style.top = 677 + 10 + parseFloat(el.style.top) + 'px';
+  twin.style.left = 442 - w / 2 + 'px';
+  twin.style.top = 673 - h / 2 + 'px';
   machine.insertBefore(twin, body);
-  const path = [
-    { transform: 'none' },
-    { transform: 'translate(120px,-14px) rotate(4deg)', offset: .4 },
-    { transform: 'translate(220px,-50px) rotate(-3deg)', offset: .75 },
-    { transform: 'translate(260px,-70px) rotate(0deg)' },
-  ];
-  const opts = { duration: 1300, easing: 'ease-in-out', fill: 'forwards' };
+  const path = slidePath(), opts = { duration: 1500, easing: 'linear', fill: 'forwards' };
   el.animate(path, opts);
   await twin.animate(path, opts).finished;
   el.remove();
-  t.el = twin; // the prize reveal starts from where the toy floated to
+  t.el = twin; // the prize reveal starts where the toy left the slide
   await prize(t);
   twin.remove();
   t.el = el;
   el.getAnimations().forEach(a => a.cancel());
-  side.classList.remove('open');
   t.won = true;
   s.toy = null;
   if (TOYS.every(o => o.won)) {
@@ -558,10 +555,10 @@ function step(dt) {
       f.vy += 1700 * dt; f.y += f.vy * dt;
       f.x = approach(f.x, CASE_X, 300 * dt);
       s.toy.sc = f.sc0 + (CHUTE_S - f.sc0) * clamp((f.y - f.y0) / (470 - f.y0), 0, 1);
-      if (drawFall() > 560) { s.phase = 'trap'; trapSequence(); }
+      if (drawFall() > 560) { s.phase = 'slide'; slideSequence(); }
       break;
     }
-    default: // coin / inserting / trap / prize: claw returns home
+    default: // coin / inserting / slide / prize: claw returns home
       s.cx = approach(s.cx, HOME_X, 160 * dt);
       s.L = approach(s.L, L0, 60 * dt);
   }
